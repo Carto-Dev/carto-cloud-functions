@@ -2,6 +2,7 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const algoliaSearch = require('algoliasearch');
 const algoliaKeys = require('./keys/algolia');
+const firebaseUtils = require('./utils/firebase');
 
 // Initializing firebase admin.
 admin.initializeApp();
@@ -79,3 +80,30 @@ exports.onProductDeleted = functions.firestore
     // Saving the object.
     return index.deleteObject(deletedProductId);
   });
+
+/**
+ * Actual searching mechanism. First query the algolia database
+ * for ids and run it through firestore to get the actual data.
+ */
+exports.searchForProducts = functions.https.onRequest(async (req, res) => {
+  // Getting the search query
+  const searchQuery = req.query.searchQuery;
+
+  // Initializing Algolia.
+  const index = algoliaClient.initIndex(algoliaKeys.indexName);
+
+  // Searching across Algolia database.
+  const search = (await index.search(searchQuery)).hits;
+
+  // Getting specific ids to fetch from firestore.
+  const objectIds = search.map((result) => result.objectID);
+
+  // Fetching documents from firestore.
+  const searchResult = await firebaseUtils.getFirestoreDocsById(
+    objectIds,
+    'products'
+  );
+
+  // Sending the data to client.
+  res.send(searchResult);
+});
