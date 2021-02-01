@@ -3,6 +3,7 @@ const admin = require('firebase-admin');
 const algoliaSearch = require('algoliasearch');
 const algoliaKeys = require('./keys/algolia');
 const firebaseUtils = require('./utils/firebase');
+const algoliaUtils = require('./utils/algolia');
 
 // Initializing firebase admin.
 admin.initializeApp();
@@ -98,6 +99,11 @@ exports.searchForProducts = functions.https.onRequest(async (req, res) => {
   // Getting specific ids to fetch from firestore.
   const objectIds = search.map((result) => result.objectID);
 
+  // If search results are empty, return an empty array.
+  if (objectIds.length === 0) {
+    res.send([]);
+  }
+
   // Fetching documents from firestore.
   const searchResult = await firebaseUtils.getFirestoreDocsById(
     objectIds,
@@ -107,3 +113,41 @@ exports.searchForProducts = functions.https.onRequest(async (req, res) => {
   // Sending the data to client.
   res.send(searchResult);
 });
+
+/**
+ * Searching and filtering by categories
+ */
+exports.searchForProductsByCategories = functions.https.onRequest(
+  async (req, res) => {
+    // Getting the search query and categories.
+    const searchQuery = req.query.searchQuery;
+    const categories = req.query.categories;
+
+    // Initializing Algolia.
+    const index = algoliaClient.initIndex(algoliaKeys.indexName);
+
+    // Searching across Algolia database.
+    const search = (
+      await index.search(searchQuery, {
+        filters: algoliaUtils.generateCategoryQuery('categories', categories),
+      })
+    ).hits;
+
+    // Getting specific ids to fetch from firestore.
+    const objectIds = search.map((result) => result.objectID);
+
+    // If search results are empty, return an empty array.
+    if (objectIds.length === 0) {
+      res.send([]);
+    }
+
+    // Fetching documents from firestore.
+    const searchResult = await firebaseUtils.getFirestoreDocsById(
+      objectIds,
+      'products'
+    );
+
+    // Sending the data to client.
+    res.send(searchResult);
+  }
+);
